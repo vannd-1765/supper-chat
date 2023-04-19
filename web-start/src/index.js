@@ -50,48 +50,113 @@ import { getFirebaseConfig } from './firebase-config.js';
 // Signs-in Friendly Chat.
 async function signIn() {
   alert('TODO: Implement Google Sign-In');
+  const token = "eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJmaXJlYmFzZS1hZG1pbnNkay15NXhrbUBzdXBwZXItY2hhdC1hNmFjMC5pYW0uZ3NlcnZpY2VhY2NvdW50LmNvbSIsInN1YiI6ImZpcmViYXNlLWFkbWluc2RrLXk1eGttQHN1cHBlci1jaGF0LWE2YWMwLmlhbS5nc2VydmljZWFjY291bnQuY29tIiwiYXVkIjoiaHR0cHM6Ly9pZGVudGl0eXRvb2xraXQuZ29vZ2xlYXBpcy5jb20vZ29vZ2xlLmlkZW50aXR5LmlkZW50aXR5dG9vbGtpdC52MS5JZGVudGl0eVRvb2xraXQiLCJpYXQiOjE2ODE4ODg0MjMsImV4cCI6MTY4MTg5MjAyMywidWlkIjoiZGV3amVrc2pka3NkIiwiY2xhaW1zIjp7fX0.gLO9oIq-AxCEkLQ2d6ciWjBp3n8seeXubJcGxU3uXgz8eOBLCndHNeG5hqQ9yxbxhU8O-Un0DKKiLkam7PFsDWmDghDD71JWfxx2LH50ell_7_iYTKHE-Y_DN6RAH-I6CDGY7Ps2JrDpb_wcfnQ78b7GjN7v2FTyj87JLS4vRU-GM_0bNL8TBLoVoS-gxpz-nXPI_ktWBbhPkMalg8bh0tnWHUM1lybPUKC1IeXM0x9YRi3bj4Ctg5NxykBuFIyEx9KRIkUKX__mlz-r_cT2Wdh0wXpp5W24Al-tG4ieAtHf7RxN2-5bReoI2y1fhV9z-mPPwOLL35EkuS9g4DUK_w";
   // TODO 1: Sign in Firebase with credential from the Google user.
+
+  var provider = new GoogleAuthProvider();
+  await signInWithPopup(getAuth(), provider);
 }
 
 // Signs-out of Friendly Chat.
 function signOutUser() {
+  signOut(getAuth());
   // TODO 2: Sign out of Firebase.
 }
 
 // Initiate firebase auth
 function initFirebaseAuth() {
+  onAuthStateChanged(getAuth(), authStateObserver);
+  // onAuthStateChanged(getAuth(), authStateObserver(getAuth().currentUser));
   // TODO 3: Subscribe to the user's signed-in status
 }
 
 // Returns the signed-in user's profile Pic URL.
 function getProfilePicUrl() {
+  return getAuth().currentUser.photoURL || '/images/profile_placeholder.png';
   // TODO 4: Return the user's profile pic URL.
 }
 
 // Returns the signed-in user's display name.
 function getUserName() {
+  return getAuth().currentUser.displayName;
   // TODO 5: Return the user's display name.
 }
 
 // Returns true if a user is signed-in.
 function isUserSignedIn() {
+  return !!getAuth().currentUser;
   // TODO 6: Return true if a user is signed-in.
 }
 
 // Saves a new message on the Cloud Firestore.
 async function saveMessage(messageText) {
   // TODO 7: Push a new message to Cloud Firestore.
+  try {
+    await addDoc(collection(getFirestore(), 'messages'), {
+      name: getUserName(),
+      text: messageText,
+      profilePicUrl: getProfilePicUrl(),
+      timestamp: serverTimestamp()
+    });
+
+    console.log('Your message: ', messageText);
+  }
+  catch(error) {
+    console.error('Error writing new message to Firebase Database', error);
+  }
 }
 
 // Loads chat messages history and listens for upcoming ones.
 function loadMessages() {
   // TODO 8: Load and listen for new messages.
+  const recentMessagesQuery = query(collection(getFirestore(), 'messages'), orderBy('timestamp', 'desc'), limit(12));
+
+  // Start listening to the query
+  onSnapshot(recentMessagesQuery, function(snapshot) {
+    snapshot.docChanges().forEach(function(change) {
+      if (change.type === 'removed') {
+        deleteMessage(change.doc.id);
+      } else {
+        var message = change.doc.data();
+        displayMessage(change.doc.id, message.timestamp, message.name, message.text,
+                      message.profilePicUrl, message.imageUrl);
+      }
+    })
+  })
 }
 
 // Saves a new message containing an image in Firebase.
 // This first saves the image in Firebase storage.
 async function saveImageMessage(file) {
   // TODO 9: Posts a new image as a message.
+  try {
+    // 1 - We add a message with a loading icon that will get updated with the shared image.
+    const messageRef = await addDoc(collection(getFirestore(), 'messages'), {
+      name: getUserName(),
+      imageUrl: LOADING_IMAGE_URL,
+      profilePicUrl: getProfilePicUrl(),
+      timestamp: serverTimestamp()
+    });
+
+    // 2 - Upload the image to Cloud Storage.
+    const filePath = `${getAuth().currentUser.uid}/${messageRef.id}/${file.name}`;
+    const newImageRef = ref(getStorage(), filePath);
+    const fileSnapshot = await uploadBytesResumable(newImageRef, file);
+
+    // 3 - Generate a public URL for the file.
+    const publicImageUrl = await getDownloadURL(newImageRef);
+
+    // 4 - Update the chat message placeholder with the image's URL.
+    await updateDoc(messageRef,{
+      imageUrl: publicImageUrl,
+      storageUri: fileSnapshot.metadata.fullPath
+    });
+
+    console.log("imageUrl: ", publicImageUrl);
+    console.log("storageUri: ", fileSnapshot.metadata.fullPath);
+  } catch(error) {
+    console.error('There was an error uploading a file to Cloud Storage:', error);
+  }
 }
 
 // Saves the messaging device token to Cloud Firestore.
@@ -344,6 +409,7 @@ mediaCaptureElement.addEventListener('change', onMediaFileSelected);
 
 const firebaseAppConfig = getFirebaseConfig();
 // TODO 0: Initialize Firebase
+initializeApp(firebaseAppConfig);
 
 // TODO 12: Initialize Firebase Performance Monitoring
 
