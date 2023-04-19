@@ -8,6 +8,7 @@ xcuserdata/
 GoogleService-Info.plist
 web/functions/node_modules
 web-start/functions/node_modules
+web-start/src/firebase-config.js
 cloud-functions-start/functions/node_modules
 cloud-functions/functions/node_modules
 .firebaserc
